@@ -1,32 +1,81 @@
 package main
 
 import (
+	"crypto/tls"
 	"net/http"
-	"log"
+	"net/http/httputil"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/koding/websocketproxy"
 )
 
-var cmd Cmd
-var srv http.Server
+var (
+	xremote, xremoteWs, xremoteHost, xurl, xenv string
+)
 
-func StartServer(bind string, remote string)  {
-	log.Printf("Listening on %s, forwarding to %s", bind, remote)
-	h := &handle{reverseProxy: remote}
-	srv.Addr = bind
-	srv.Handler = h
-	//go func() {
-		if err := srv.ListenAndServe(); err != nil {
-			log.Fatalln("ListenAndServe: ", err)
-		}
-	//}()
-}
+func HandleHttpRequest(w http.ResponseWriter, r *http.Request) {
 
-func StopServer()  {
-	if err := srv.Shutdown(nil) ; err != nil {
-		log.Println(err)
+	r.Host = xremoteHost
+	tlsConf := &tls.Config{
+		InsecureSkipVerify: true,
 	}
+
+	if len(xurl) != 0 && r.URL.Path != xurl { //非指定url拒绝访问
+		return
+	}
+
+	if strings.ToLower(r.Header.Get("Upgrade")) == "websocket" {
+
+		remote, err := url.Parse(xremoteWs)
+		if err != nil {
+			return
+		}
+		proxy := websocketproxy.NewProxy(remote)
+		proxy.Dialer = &websocket.Dialer{
+			TLSClientConfig:  tlsConf,
+			Proxy:            http.ProxyFromEnvironment,
+			HandshakeTimeout: 45 * time.Second,
+		}
+		proxy.Upgrader = &websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		}
+
+		proxy.ServeHTTP(w, r)
+		return
+	}
+
+	remote, err := url.Parse(xremote)
+	if err != nil {
+		return
+	}
+	proxy := httputil.NewSingleHostReverseProxy(remote)
+	proxy.Transport = &http.Transport{
+		TLSClientConfig: tlsConf,
+	}
+	proxy.ServeHTTP(w, r)
+	return
 }
 
 func main() {
-	cmd = parseCmd()
-	StartServer(cmd.bind, cmd.remote)
+	switch xenv {
+	case "bd":
+		//todo
+	default: //ali
+		http.HandleFunc("/", HandleHttpRequest)
+		http.ListenAndServe("0.0.0.0:9000", nil)
+	}
+
+}
+
+func init() {
+	xremote, xremoteWs, xremoteHost, xurl, xenv = os.Getenv("XREMOTE"),
+		os.Getenv("XREMOTEWs"), os.Getenv("XREMOTE_HOST"), os.Getenv("XURL"), os.Getenv("XENV")
 }
