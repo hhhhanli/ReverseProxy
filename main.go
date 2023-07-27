@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 var (
 	xremote, xremoteWs, xremoteHost, xurl, xenv string
+	xtimeout, xrBuf, xwBuf                      int64
 )
 
 func HandleHttpRequest(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,6 @@ func HandleHttpRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.ToLower(r.Header.Get("Upgrade")) == "websocket" {
-
 		remote, err := url.Parse(xremoteWs)
 		if err != nil {
 			return
@@ -38,11 +39,11 @@ func HandleHttpRequest(w http.ResponseWriter, r *http.Request) {
 		proxy.Dialer = &websocket.Dialer{
 			TLSClientConfig:  tlsConf,
 			Proxy:            http.ProxyFromEnvironment,
-			HandshakeTimeout: 45 * time.Second,
+			HandshakeTimeout: time.Duration(xtimeout) * time.Millisecond,
 		}
 		proxy.Upgrader = &websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			ReadBufferSize:  int(xrBuf),
+			WriteBufferSize: int(xwBuf),
 			CheckOrigin: func(r *http.Request) bool {
 				return true
 			},
@@ -59,7 +60,9 @@ func HandleHttpRequest(w http.ResponseWriter, r *http.Request) {
 	proxy := httputil.NewSingleHostReverseProxy(remote)
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: tlsConf,
+		IdleConnTimeout: time.Duration(xtimeout) * time.Millisecond,
 	}
+
 	proxy.ServeHTTP(w, r)
 	return
 }
@@ -78,4 +81,17 @@ func main() {
 func init() {
 	xremote, xremoteWs, xremoteHost, xurl, xenv = os.Getenv("XREMOTE"),
 		os.Getenv("XREMOTEWs"), os.Getenv("XREMOTE_HOST"), os.Getenv("XURL"), os.Getenv("XENV")
+	var err error
+	xtimeout, err = strconv.ParseInt(os.Getenv("XTIMEOUT"), 10, 64)
+	if err != nil {
+		xtimeout = 1000
+	}
+	xrBuf, err = strconv.ParseInt(os.Getenv("XRBUF"), 10, 64)
+	if err != nil {
+		xrBuf = 1024
+	}
+	xwBuf, err = strconv.ParseInt(os.Getenv("XWBUF"), 10, 64)
+	if err != nil {
+		xwBuf = 1024
+	}
 }
