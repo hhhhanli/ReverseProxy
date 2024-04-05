@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -16,7 +17,7 @@ import (
 
 var (
 	xremote, xremoteWs, xremoteHost, xurl, xenv string
-	xtimeout, xrBuf, xwBuf                      int64
+	xtimeout, xrBuf, xwBuf, xlistenPort         int64
 )
 
 func HandleHttpRequest(w http.ResponseWriter, r *http.Request) {
@@ -64,34 +65,40 @@ func HandleHttpRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proxy.ServeHTTP(w, r)
-	return
 }
 
 func main() {
+
 	switch xenv {
 	case "bd":
 		//todo
 	default: //ali
-		http.HandleFunc("/", HandleHttpRequest)
-		http.ListenAndServe("0.0.0.0:9000", nil)
-	}
 
+		http.HandleFunc("/", HandleHttpRequest)
+		if err := http.ListenAndServe(fmt.Sprintf("0.0.0.0:%d", xlistenPort), nil); err != nil {
+			fmt.Printf("ListenAndServe fail:%v\n", err)
+		}
+	}
 }
 
 func init() {
 	xremote, xremoteWs, xremoteHost, xurl, xenv = os.Getenv("XREMOTE"),
-		os.Getenv("XREMOTEWs"), os.Getenv("XREMOTE_HOST"), os.Getenv("XURL"), os.Getenv("XENV")
+		os.Getenv("XREMOTEWS"), os.Getenv("XREMOTE_HOST"), os.Getenv("XURL"), os.Getenv("XENV")
 	var err error
 	xtimeout, err = strconv.ParseInt(os.Getenv("XTIMEOUT"), 10, 64)
 	if err != nil {
-		xtimeout = 1000
+		xtimeout = 3000
 	}
 	xrBuf, err = strconv.ParseInt(os.Getenv("XRBUF"), 10, 64)
 	if err != nil {
-		xrBuf = 1024
+		xrBuf = 8192
 	}
 	xwBuf, err = strconv.ParseInt(os.Getenv("XWBUF"), 10, 64)
 	if err != nil {
-		xwBuf = 1024
+		xwBuf = 8192
+	}
+	xlistenPort, err = strconv.ParseInt(os.Getenv("XLISTEN_PORT"), 10, 64)
+	if err != nil {
+		xlistenPort = 9000
 	}
 }
